@@ -24,17 +24,21 @@ from vit_pytorch.extractor import Extractor
 from tqdm import tqdm
 from sklearn.manifold import TSNE
 
-train_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/train'
-val_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/val'
-test_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/test'
-data_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/'
+number_of_classes = 7
+img_size = 224
+
+dataset = 'Sydney-captions/'
+data_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/' + dataset
+train_dir = data_dir + 'train'
+val_dir = data_dir + 'val'
+test_dir = data_dir + 'test'
 
 teacher = resnet50(pretrained=True)
 
 v = DistillableViT(
-    image_size=256,
+    image_size=img_size,
     patch_size=32,
-    num_classes=21,
+    num_classes=number_of_classes,
     dim=1024,
     depth=6,
     heads=8,
@@ -54,7 +58,7 @@ distiller = DistillWrapper(
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
     since = time.time()
-    writer = SummaryWriter()
+    writer = SummaryWriter(data_dir + 'runs/')
 
     val_acc_history = []
 
@@ -66,7 +70,10 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
         print('-' * 10)
 
         # Each epoch has a training and validation phase
-        for phase in ['train', 'val']:
+        phase_list = ['train']
+        if dataset == 'UCM-captions':
+            phase_list.append('val')
+        for phase in phase_list:
             if phase == 'train':
                 model.train()  # Set model to training mode
             else:
@@ -240,9 +247,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 model_name = "resnet"
 
-# Number of classes in the dataset
-num_classes = 21
-
 # Batch size for training (change depending on how much memory you have)
 batch_size = 8
 
@@ -253,16 +257,25 @@ num_epochs = 10
 #   when True we only update the reshaped layer params
 feature_extract = False
 
-# Create training and validation datasets
-image_datasets = {x: datasets.ImageFolder(os.path.join(
-    data_dir, x), data_transforms[x]) for x in ['train', 'val']}
-# Create training and validation dataloaders
-dataloaders_dict = {x: torch.utils.data.DataLoader(
-    image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x in ['train', 'val']}
+if dataset == 'UCM-captions':
+    # Create training and validation datasets
+    image_datasets = {x: datasets.ImageFolder(os.path.join(
+        data_dir, x), data_transforms[x]) for x in ['train', 'val']}
+    # Create training and validation dataloaders
+    dataloaders_dict = {x: torch.utils.data.DataLoader(
+        image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x in ['train', 'val']}
+else:
+    # Create training and validation datasets
+    image_datasets = {x: datasets.ImageFolder(os.path.join(
+        data_dir, x), data_transforms[x]) for x in ['train']}
+    # Create training and validation dataloaders
+    dataloaders_dict = {x: torch.utils.data.DataLoader(
+        image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x in ['train']}
+
 
 # Initialize the model for this run
 model_ft, input_size = initialize_model(
-    model_name, num_classes, feature_extract, use_pretrained=True)
+    model_name, number_of_classes, feature_extract, use_pretrained=True)
 
 # Print the model we just instantiated
 print(model_ft)
@@ -323,7 +336,7 @@ plt.figure(figsize=(12, 7))
 
 sns.heatmap(df_cm, annot=True)
 
-plt.savefig('confusion_matrix.png')
+plt.savefig(data_dir + 'confusion_matrix.png')
 
 colors_per_class = {
     '0': [254, 202, 87],
@@ -417,11 +430,11 @@ print(labels)
 list_labels = [x.item() for x in labels]
 print(list_labels)
 
-palette = sns.color_palette("viridis", 21)
+palette = sns.color_palette("viridis", number_of_classes)
 
 plt.figure()
 sns.scatterplot(tsne[:,0], tsne[:,1], hue=list_labels, legend='full', palette=palette)
-plt.savefig('t-SNE plot.png')
+plt.savefig(data_dir + 't-SNE plot.png')
 
 tx = tsne[:, 0]
 ty = tsne[:, 1]
