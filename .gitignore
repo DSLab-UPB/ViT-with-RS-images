@@ -1,5 +1,7 @@
-/val
-/train
-/test
-UC_Merced_preprocessing.py
+/UCM-captions/train
+/UCM-captions/val
+/UCM-captions/test
+/Sydney-captions/train
+/Sydney-captions/test
+/UCM-captions/UC_Merced_preprocessing.py
 .idea/
