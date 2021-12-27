@@ -19,6 +19,10 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 from vit_pytorch.distill import DistillableViT, DistillWrapper
+from vit_pytorch.extractor import Extractor
+# from tsnecuda import TSNE
+from tqdm import tqdm
+from sklearn.manifold import TSNE
 
 train_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/train'
 val_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/val'
@@ -108,8 +112,8 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
 
             print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
 
-            writer.add_scalar('loss/train', epoch_loss, epoch)
-            writer.add_scalar('acc/train', epoch_acc, epoch)
+            writer.add_scalar('loss/' + phase, epoch_loss, epoch)
+            writer.add_scalar('acc/' + phase, epoch_acc, epoch)
 
             # deep copy the model
             if phase == 'val' and epoch_acc > best_acc:
@@ -295,11 +299,16 @@ classes = os.listdir(test_dir)
 y_pred = []
 y_true = []
 
-# iterate over test data
+# iterate over test data to plot confusion matrix, as well as extract test data embeddings
 for inputs, labels in test_loader:
+    # v = Extractor(model_ft)
+
     inputs = inputs.to(device)
     labels = labels.to(device)
+
     output = model_ft(inputs)  # Feed Network
+    # logits, embeddings = v(inputs)  # Get embeddings
+    # X_embedded = TSNE(n_components=2, perplexity=15, learning_rate=10).fit_transform(embeddings)
 
     output = (torch.max(torch.exp(output), 1)[1]).data.cpu().numpy()
     y_pred.extend(output)  # Save Prediction
@@ -311,8 +320,118 @@ cf_matrix = confusion_matrix(y_true, y_pred)
 df_cm = pd.DataFrame(cf_matrix / np.sum(cf_matrix) * 10, index=[i for i in classes],
                      columns=[i for i in classes])
 plt.figure(figsize=(12, 7))
+
 sns.heatmap(df_cm, annot=True)
-plt.savefig('output.png')
+
+plt.savefig('confusion_matrix.png')
+
+colors_per_class = {
+    '0': [254, 202, 87],
+    '1': [255, 107, 107],
+    '2': [10, 189, 227],
+    '3': [255, 159, 243],
+    '4': [16, 172, 132],
+    '5': [128, 80, 128],
+    '6': [87, 101, 116],
+    '7': [52, 31, 151],
+    '8': [0, 0, 0],
+    '9': [100, 100, 100],
+    '10': [0, 100, 255],
+    '11': [100, 0, 255],
+    '12': [0, 100, 150],
+    '13': [100, 150, 0],
+    '14': [50, 255, 180],
+    '15': [255, 255, 255],
+    '16': [10, 80, 255],
+    '17': [255, 76, 100],
+    '18': [100, 200, 150],
+    '19': [78, 80, 90],
+    '20': [200, 210, 220]
+}
+
+# we'll store the features as NumPy array of size num_images x feature_size
+features = None
+
+# we'll also store the image labels and paths to visualize them later
+labels = []
+
+for inputs, test_label in tqdm(test_loader, desc='Running the model inference'):
+    images = inputs.to(device)
+    labels += test_label
+
+    with torch.no_grad():
+        output = model_ft.forward(images)
+
+    current_features = output.cpu().numpy()
+    if features is not None:
+        features = np.concatenate((features, current_features))
+    else:
+        features = current_features
+
+
+def scale_to_01_range(x):
+    # compute the distribution range
+    value_range = (np.max(x) - np.min(x))
+
+    # move the distribution so that it starts from zero
+    # by extracting the minimal value from all its values
+    starts_from_zero = x - np.min(x)
+
+    # make the distribution fit [0; 1] by dividing by its range
+    return starts_from_zero / value_range
+
+
+def visualize_tsne_points():
+    # initialize matplotlib plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    # for every class, we'll add a scatter plot separately
+    for label in colors_per_class:
+        # find the samples of the current class in the data
+        indices = [i for i, l in enumerate(labels) if l == label]
+
+        # extract the coordinates of the points of this class only
+        current_tx = np.take(tx, indices)
+        current_ty = np.take(ty, indices)
+
+        # convert the class color to matplotlib format:
+        # BGR -> RGB, divide by 255, convert to np.array
+        color = np.array([colors_per_class[label][::-1]], dtype=np.float) / 255
+
+        # add a scatter plot with the correponding color and label
+        ax.scatter(current_tx, current_ty, c=color, label=label)
+
+    # build a legend using the labels we set previously
+    ax.legend(loc='best')
+
+    # finally, show the plot
+    plt.show()
+
+
+tsne = TSNE(n_components=2).fit_transform(features)
+
+print(len(labels))
+print(labels)
+
+list_labels = [x.item() for x in labels]
+print(list_labels)
+
+palette = sns.color_palette("viridis", 21)
+
+plt.figure()
+sns.scatterplot(tsne[:,0], tsne[:,1], hue=list_labels, legend='full', palette=palette)
+plt.savefig('t-SNE plot.png')
+
+tx = tsne[:, 0]
+ty = tsne[:, 1]
+
+# scale and move the coordinates so they fit [0; 1] range
+tx = scale_to_01_range(tx)
+ty = scale_to_01_range(ty)
+
+# visualize the plot: samples as colored points
+visualize_tsne_points()
 
 # Press the green button in the gutter to run the script.
 # if __name__ == '__main__':
