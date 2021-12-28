@@ -1,7 +1,11 @@
 /UCM-captions/train
 /UCM-captions/val
 /UCM-captions/test
-#/Sydney-captions/train
-#/Sydney-captions/test
+/AID/train
+/AID/val
+/AID/test
+/Sydney-captions/train
+/Sydney-captions/test
 /UCM-captions/UC_Merced_preprocessing.py
 .idea/
+/AID/AID_preprocessing.py

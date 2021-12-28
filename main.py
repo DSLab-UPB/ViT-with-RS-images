@@ -24,10 +24,10 @@ from vit_pytorch.extractor import Extractor
 from tqdm import tqdm
 from sklearn.manifold import TSNE
 
-number_of_classes = 7
-img_size = 224
+number_of_classes = 30
+img_size = 600
 
-dataset = 'Sydney-captions/'
+dataset = 'AID/'
 data_dir = '/home/antonio/PycharmProjects/ViT-with-RS-images/' + dataset
 train_dir = data_dir + 'train'
 val_dir = data_dir + 'val'
@@ -37,7 +37,7 @@ teacher = resnet50(pretrained=True)
 
 v = DistillableViT(
     image_size=img_size,
-    patch_size=32,
+    patch_size=60,
     num_classes=number_of_classes,
     dim=1024,
     depth=6,
@@ -71,7 +71,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
 
         # Each epoch has a training and validation phase
         phase_list = ['train']
-        if dataset == 'UCM-captions':
+        if dataset != 'Sydney-captions':
             phase_list.append('val')
         for phase in phase_list:
             if phase == 'train':
@@ -257,7 +257,7 @@ num_epochs = 10
 #   when True we only update the reshaped layer params
 feature_extract = False
 
-if dataset == 'UCM-captions':
+if dataset != 'Sydney-captions':
     # Create training and validation datasets
     image_datasets = {x: datasets.ImageFolder(os.path.join(
         data_dir, x), data_transforms[x]) for x in ['train', 'val']}
