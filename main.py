@@ -33,28 +33,6 @@ train_dir = data_dir + 'train'
 val_dir = data_dir + 'val'
 test_dir = data_dir + 'test'
 
-teacher = resnet50(pretrained=True)
-
-v = DistillableViT(
-    image_size=img_size,
-    patch_size=60,
-    num_classes=number_of_classes,
-    dim=1024,
-    depth=6,
-    heads=8,
-    mlp_dim=2048,
-    dropout=0.1,
-    emb_dropout=0.1
-)
-
-distiller = DistillWrapper(
-    student=v,
-    teacher=teacher,
-    temperature=3,  # temperature of distillation
-    alpha=0.5,  # trade between main loss and distillation loss
-    hard=False  # whether to use soft or hard distillation
-)
-
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
     since = time.time()
@@ -71,7 +49,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
 
         # Each epoch has a training and validation phase
         phase_list = ['train']
-        if dataset != 'Sydney-captions':
+        if dataset != 'Sydney-captions/':
             phase_list.append('val')
         for phase in phase_list:
             if phase == 'train':
@@ -88,6 +66,13 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
+                # For distiller
+                # new_labels = torch.zeros((8, number_of_classes))
+                # for idx, elem in enumerate(labels):
+                #     new_labels[idx, elem.item()] = 1
+                #
+                # new_labels = new_labels.to(device)
+
                 # zero the parameter gradients
                 optimizer.zero_grad()
 
@@ -98,12 +83,29 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=10):
                     #   In train
                     #   mode we calculate the loss by summing the final output and the auxiliary output
                     #   but in testing we only consider the final output.
-                    outputs = model(inputs)
-                    # print(min(labels))
-                    # print(max(labels))
-                    loss = criterion(outputs, labels)
 
-                    _, preds = torch.max(outputs, 1)
+                    # For ResNet
+                    # outputs = model(inputs)
+                    # loss = criterion(outputs, labels)
+
+                    # img = torch.randn(2, 3, 256, 256)
+                    # labels = torch.randint(0, 1000, (2,))
+                    # print(img.shape)
+                    # print(labels.shape)
+
+                    # img = torch.randn(2, 3, 256, 256).to(device)
+                    # labels = torch.randint(0, 1000, (2,)).to(device)
+                    #
+                    # loss = distiller(img, labels)
+
+                    # For distiller
+                    # print(distiller)
+                    loss = distiller(inputs, labels)
+
+                    # _, preds = torch.max(outputs, 1)
+
+                    # For distiller
+                    preds = 0
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -244,6 +246,8 @@ data_transforms = {
 print("Initializing Datasets and Dataloaders...")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
+
 
 model_name = "resnet"
 
@@ -257,7 +261,7 @@ num_epochs = 10
 #   when True we only update the reshaped layer params
 feature_extract = False
 
-if dataset != 'Sydney-captions':
+if dataset != 'Sydney-captions/':
     # Create training and validation datasets
     image_datasets = {x: datasets.ImageFolder(os.path.join(
         data_dir, x), data_transforms[x]) for x in ['train', 'val']}
@@ -272,7 +276,6 @@ else:
     dataloaders_dict = {x: torch.utils.data.DataLoader(
         image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x in ['train']}
 
-
 # Initialize the model for this run
 model_ft, input_size = initialize_model(
     model_name, number_of_classes, feature_extract, use_pretrained=True)
@@ -280,7 +283,42 @@ model_ft, input_size = initialize_model(
 # Print the model we just instantiated
 print(model_ft)
 
+teacher = model_ft
+
+v = DistillableViT(
+    image_size=img_size,
+    patch_size=75,
+    num_classes=number_of_classes,
+    dim=1024,
+    depth=6,
+    heads=8,
+    mlp_dim=2048,
+    dropout=0.1,
+    emb_dropout=0.1
+)
+
+# v = ViT(
+#     image_size=img_size,
+#     patch_size=32,
+#     num_classes=number_of_classes,
+#     dim=1024,
+#     depth=6,
+#     heads=8,
+#     mlp_dim=2048,
+#     dropout=0.1,
+#     emb_dropout=0.1
+# )
+
+distiller = DistillWrapper(
+    student=v,
+    teacher=teacher,
+    temperature=3,  # temperature of distillation
+    alpha=0.5,  # trade between main loss and distillation loss
+    hard=False  # whether to use soft or hard distillation
+)
+
 model_ft = model_ft.to(device)
+distiller = distiller.to(device)
 
 params_to_update = model_ft.parameters()
 print("Params to learn:")
@@ -301,7 +339,8 @@ optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
 criterion = nn.CrossEntropyLoss()
 
 # Train and evaluate
-model_ft, hist = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft,
+# Distiller or model_ft
+model_ft, hist = train_model(distiller, dataloaders_dict, criterion, optimizer_ft,
                              num_epochs=num_epochs)
 
 test_data = datasets.ImageFolder(test_dir, transform=data_transforms['test'])
@@ -319,9 +358,12 @@ for inputs, labels in test_loader:
     inputs = inputs.to(device)
     labels = labels.to(device)
 
-    output = model_ft(inputs)  # Feed Network
+    # output = model_ft(inputs)  # Feed Network
     # logits, embeddings = v(inputs)  # Get embeddings
     # X_embedded = TSNE(n_components=2, perplexity=15, learning_rate=10).fit_transform(embeddings)
+
+    # For distiller
+    output = v(inputs)
 
     output = (torch.max(torch.exp(output), 1)[1]).data.cpu().numpy()
     y_pred.extend(output)  # Save Prediction
@@ -336,7 +378,9 @@ plt.figure(figsize=(12, 7))
 
 sns.heatmap(df_cm, annot=True)
 
-plt.savefig(data_dir + 'confusion_matrix.png')
+model_to_plot = v
+
+plt.savefig(data_dir + str(type(model_to_plot)) + '/confusion_matrix.png')
 
 colors_per_class = {
     '0': [254, 202, 87],
@@ -373,7 +417,9 @@ for inputs, test_label in tqdm(test_loader, desc='Running the model inference'):
     labels += test_label
 
     with torch.no_grad():
-        output = model_ft.forward(images)
+        # output = model_ft.forward(images)
+        # For distiller
+        output = v.forward(images)
 
     current_features = output.cpu().numpy()
     if features is not None:
@@ -433,8 +479,8 @@ print(list_labels)
 palette = sns.color_palette("viridis", number_of_classes)
 
 plt.figure()
-sns.scatterplot(tsne[:,0], tsne[:,1], hue=list_labels, legend='full', palette=palette)
-plt.savefig(data_dir + 't-SNE plot.png')
+sns.scatterplot(tsne[:, 0], tsne[:, 1], hue=list_labels, legend='full', palette=palette)
+plt.savefig(data_dir +str(type(model_to_plot)) + '/t-SNE plot.png')
 
 tx = tsne[:, 0]
 ty = tsne[:, 1]
